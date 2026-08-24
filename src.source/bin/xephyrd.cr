@@ -1,6 +1,7 @@
 require "redis"
 
-socket_path = Path.home.join(".local/share/redis/redis.sock").to_s
+default_fallback = Path.home.join(".local/share/redis/socket").to_s
+socket_path = ENV.fetch("REDIS_UNIXSOCKET", default_fallback)
 
 puts "Connecting to Redis via Unix socket at: #{socket_path}"
 

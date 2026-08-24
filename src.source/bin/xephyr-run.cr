@@ -11,7 +11,8 @@ end
 message_to_send = ARGV[0]
 
 # 3. Resolve the Unix socket path
-socket_path = Path.home.join(".local/share/redis/redis.sock").to_s
+default_fallback = Path.home.join(".local/share/redis/socket").to_s
+socket_path = ENV.fetch("REDIS_UNIXSOCKET", default_fallback)
 p socket_path
 
 # 4. Connect and publish
