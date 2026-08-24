@@ -1,0 +1,9 @@
+---
+name: xephyr-run
+version: 0.0.0
+authors:
+- Anatoly Chernov <chertoly@gmail.com>
+targets:
+  xephyr-run:
+    main: src/bin/xephyr-run.cr
+crystal: ">= 1.15.1"
