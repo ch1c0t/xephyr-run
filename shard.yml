@@ -6,6 +6,8 @@ authors:
 targets:
   xephyr-run:
     main: src/bin/xephyr-run.cr
+  xephyrd:
+    main: src/bin/xephyrd.cr
 crystal: ">= 1.15.1"
 dependencies:
   redis:
