@@ -48,6 +48,12 @@ redis.subscribe(channel) do |on|
         app_executable = parts.shift
         app_args = parts
 
+        resolved_path = Process.find_executable(app_executable)
+        if resolved_path.nil?
+          STDERR.puts "\n[!] Rejected: Program '#{app_executable}' is not installed or not in PATH."
+          next # Instantly abort and skip processing this specific Pub/Sub message
+        end
+
         xephyr_process = Process.new(
           command: "Xephyr",
           args: [display_string, "-screen", "800x600", "-ac"]
@@ -56,7 +62,7 @@ redis.subscribe(channel) do |on|
         sleep 100.milliseconds
 
         app_process = Process.new(
-          command: app_executable,
+          command: resolved_path,
           args: app_args,
           env: {"DISPLAY" => display_string}
         )
