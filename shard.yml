@@ -7,3 +7,6 @@ targets:
   xephyr-run:
     main: src/bin/xephyr-run.cr
 crystal: ">= 1.15.1"
+dependencies:
+  redis:
+    github: stefanwille/crystal-redis
