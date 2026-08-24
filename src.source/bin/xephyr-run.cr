@@ -1,0 +1,1 @@
+puts "xephyr-run is made with Crystal."
