@@ -18,13 +18,12 @@ puts "Press Ctrl+C to exit."
 # The block yields the channel name and the string message payload
 redis.subscribe(channel) do |on|
   on.message do |subscription_channel, message|
-    puts "[#{Time.local}] Received from #{subscription_channel}: #{message}"
     raw_payload = message.strip
     next if raw_payload.empty?
 
     display_id = display_counter.add(1)
     display_string = ":#{display_id}"
-    puts "\n[+] Received Command: '#{raw_payload}' -> Spawning isolated screen #{display_string}"
+    puts "\n[#{Time.local}]\n[+] Received Command: '#{raw_payload}' -> Spawning isolated screen #{display_string}"
 
     spawn do
       begin
@@ -38,7 +37,7 @@ redis.subscribe(channel) do |on|
           args: [display_string, "-screen", "800x600", "-ac"]
         )
 
-        sleep 500.milliseconds
+        sleep 100.milliseconds
 
         app_process = Process.new(
           command: app_executable,
