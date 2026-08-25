@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/ch1c0t/bgem.git
-  revision: 62b87798ef2787542a0214d8c48fbae948881a0c
+  revision: a5f07d0945e6a6cbfeffb218a7cc6e4500d66825
   specs:
     bgem (0.2.2)
       string-indent (~> 0.0.1)
