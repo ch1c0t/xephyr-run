@@ -14,8 +14,6 @@ when 1
   end
 end
 
-require "redis"
-
 # Helper function to dynamically discover the current screen resolution via xrandr
 def screen_resolution : String
   stdout_buffer = IO::Memory.new
@@ -31,6 +29,8 @@ def screen_resolution : String
   # Safe hardcoded fallback if xrandr is missing or fails to parse
   "1024x768"
 end
+
+require "redis"
 
 display_counter = Atomic(Int32).new(10)
 
