@@ -14,6 +14,82 @@ when 1
   end
 end
 
+# Handles the validation, lifecycle, and crash logging of Xephyr environments
+class XephyrRunner
+  # Track display indices across all instances concurrently using an atomic counter
+  @@display_counter = Atomic(Int32).new(10)
+
+  def initialize(@raw_payload : String)
+    @parts = @raw_payload.strip.split(' ')
+    @app_executable = @parts.shift? || ""
+    @app_args = @parts
+    @resolved_path = nil : String?
+  end
+
+  # Validates that the payload is well-formed and the executable exists
+  def valid? : Bool
+    return false if @app_executable.empty?
+    
+    @resolved_path = Process.find_executable(@app_executable)
+    if @resolved_path.nil?
+      STDERR.puts "\n[!] Rejected: Program '#{@app_executable}' is not installed or not in PATH."
+      return false
+    end
+    
+    true
+  end
+
+  # Spawns Xephyr and the nested application inside a separate concurrent context
+  def run
+    # Ensure verification passed before spinning up infrastructure
+    path = @resolved_path
+    return if path.nil?
+
+    display_id = @@display_counter.add(1)
+    display_string = ":#{display_id}"
+    puts "\n[+] Validated: #{path} -> Spawning screen #{display_string} [Size: #{screen_resolution}]"
+
+    spawn do
+      app_stderr_buffer = IO::Memory.new
+      
+      begin
+        xephyr_process = Process.new(
+          command: "Xephyr", 
+          args: [display_string, "-screen", screen_resolution, "-ac"]
+        )
+
+        sleep 100.milliseconds
+
+        app_process = Process.new(
+          command: path,
+          args: @app_args,
+          env: {"DISPLAY" => display_string},
+          error: app_stderr_buffer
+        )
+
+        puts "[-] Screen #{display_string} Operational. Running PID #{app_process.pid}"
+
+        exit_status = app_process.wait
+        if exit_status.success?
+          puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
+        else
+          log_application_failure(
+            @app_executable,
+            display_string,
+            exit_status.exit_code,
+            app_stderr_buffer.to_s
+          )
+        end
+
+        xephyr_process.terminate if xephyr_process.exists?
+      rescue ex : Exception
+        STDERR.puts "System execution failure inside target '#{@raw_payload}': #{ex.message}"
+      end
+    end
+  end
+end
+
+
 # Helper function to write failure logs to both the console and a physical log file
 def log_application_failure(app_name : String, display_string : String, exit_code : Int32, error_logs : String)
   # 1. Build destination path: ~/.local/state/xephyrd/
@@ -67,8 +143,6 @@ end
 
 require "redis"
 
-display_counter = Atomic(Int32).new(10)
-
 default_fallback = Path.home.join(".local/share/redis/socket").to_s
 socket_path = ENV.fetch("REDIS_UNIXSOCKET", default_fallback)
 
@@ -84,60 +158,8 @@ puts "Press Ctrl+C to exit."
 # 3. Block and listen for incoming messages on the channel
 # The block yields the channel name and the string message payload
 redis.subscribe(channel) do |on|
-  on.message do |subscription_channel, message|
-    raw_payload = message.strip
-    next if raw_payload.empty?
-
-    display_id = display_counter.add(1)
-    display_string = ":#{display_id}"
-    puts "\n[#{Time.local}]\n[+] Received Command: '#{raw_payload}' -> Spawning isolated screen #{display_string}"
-
-    spawn do
-      begin
-        # Split message into application executable and its positional arguments
-        parts = raw_payload.split(' ')
-        app_executable = parts.shift
-        app_args = parts
-
-        resolved_path = Process.find_executable(app_executable)
-        if resolved_path.nil?
-          STDERR.puts "\n[!] Rejected: Program '#{app_executable}' is not installed or not in PATH."
-          next # Instantly abort and skip processing this specific Pub/Sub message
-        end
-
-        xephyr_process = Process.new(
-          command: "Xephyr",
-          args: [display_string, "-screen", screen_resolution, "-ac"]
-        )
-
-        sleep 100.milliseconds
-
-        app_stderr_buffer = IO::Memory.new
-        app_process = Process.new(
-          command: resolved_path,
-          args: app_args,
-          env: {"DISPLAY" => display_string},
-          error: app_stderr_buffer
-        )
-
-        puts "[-] Screen #{display_string} Operational. Running PID #{app_process.pid}"
-
-        exit_status = app_process.wait
-        if exit_status.success?
-          puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
-        else
-          log_application_failure(
-            app_executable,
-            display_string,
-            exit_status.exit_code,
-            app_stderr_buffer.to_s
-          )
-        end
-
-        xephyr_process.terminate if xephyr_process.exists?
-      rescue ex : Exception
-        STDERR.puts "Error processing layout target '#{raw_payload}': #{ex.message}"
-      end
-    end
+  on.message do |_channel, message|
+    runner = XephyrRunner.new(message)
+    runner.run if runner.valid?
   end
 end
