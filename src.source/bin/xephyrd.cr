@@ -59,15 +59,12 @@ redis.subscribe(channel) do |on|
         if exit_status.success?
           puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
         else
-          STDERR.puts "\n[!] CRASH DETECTED: Application '#{app_executable}' failed inside screen #{display_string}."
-          STDERR.puts "    Exit Status Code: #{exit_status.exit_code}"
-
-          error_logs = app_stderr_buffer.to_s.strip
-          if error_logs.empty?
-            STDERR.puts "    Logs: No error logs emitted to stderr."
-          else
-            STDERR.puts "    Captured Output Logs:\n--- Start App Logs ---\n#{error_logs}\n--- End App Logs ---"
-          end
+          log_application_failure(
+            app_executable,
+            display_string,
+            exit_status.exit_code,
+            app_stderr_buffer.to_s
+          )
         end
 
         xephyr_process.terminate if xephyr_process.exists?
