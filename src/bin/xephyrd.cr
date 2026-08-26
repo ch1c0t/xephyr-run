@@ -77,17 +77,31 @@ redis.subscribe(channel) do |on|
 
         sleep 100.milliseconds
 
+        app_stderr_buffer = IO::Memory.new
         app_process = Process.new(
           command: resolved_path,
           args: app_args,
-          env: {"DISPLAY" => display_string}
+          env: {"DISPLAY" => display_string},
+          error: app_stderr_buffer
         )
 
         puts "[-] Screen #{display_string} Operational. Running PID #{app_process.pid}"
 
-        # C. Non-blocking wait for the target application layer to exit
-        app_process.wait
-        puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
+        exit_status = app_process.wait
+        if exit_status.success?
+          puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
+        else
+          STDERR.puts "\n[!] CRASH DETECTED: Application '#{app_executable}' failed inside screen #{display_string}."
+          STDERR.puts "    Exit Status Code: #{exit_status.exit_code}"
+
+          error_logs = app_stderr_buffer.to_s.strip
+          if error_logs.empty?
+            STDERR.puts "    Logs: No error logs emitted to stderr."
+          else
+            STDERR.puts "    Captured Output Logs:\n--- Start App Logs ---\n#{error_logs}\n--- End App Logs ---"
+          end
+        end
+
         xephyr_process.terminate if xephyr_process.exists?
       rescue ex : Exception
         STDERR.puts "Error processing layout target '#{raw_payload}': #{ex.message}"
