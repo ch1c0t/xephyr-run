@@ -59,6 +59,7 @@ class XephyrRunner
         else
           log_application_failure(
             @app_executable,
+            @raw_payload,
             display_string,
             exit_status.exit_code,
             app_stderr_buffer.to_s

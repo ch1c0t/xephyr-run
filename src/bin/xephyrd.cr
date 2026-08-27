@@ -75,6 +75,7 @@ class XephyrRunner
         else
           log_application_failure(
             @app_executable,
+            @raw_payload,
             display_string,
             exit_status.exit_code,
             app_stderr_buffer.to_s
@@ -91,7 +92,7 @@ end
 
 
 # Helper function to write failure logs to both the console and a physical log file
-def log_application_failure(app_name : String, display_string : String, exit_code : Int32, error_logs : String)
+def log_application_failure(app_name : String, received_command : String, display_string : String, exit_code : Int32, error_logs : String)
   # 1. Build destination path: ~/.local/state/xephyrd/
   state_dir = Path.home.join(".local", "state", "xephyrd")
   Dir.mkdir_p(state_dir) # Creates the directory path safely if it is missing
@@ -107,6 +108,7 @@ def log_application_failure(app_name : String, display_string : String, exit_cod
     io << "CRASH REPORT\n"
     io << "Time:          #{Time.local}\n"
     io << "Application:   #{app_name}\n"
+    io << "Received command: #{received_command}\n"
     io << "Display:       #{display_string}\n"
     io << "Exit Code:     #{exit_code}\n"
     io << "Captured Logs:\n"
