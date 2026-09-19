@@ -21,6 +21,7 @@ def run
 
       wm_process = Process.new(
         command: "matchbox-window-manager",
+        args: ["-use_titlebar", "no"],
         env: {"DISPLAY" => display_string}
       )
 
