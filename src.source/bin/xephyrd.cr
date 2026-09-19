@@ -14,6 +14,7 @@ puts "Press Ctrl+C to exit."
 
 # 3. Block and listen for incoming messages on the channel
 # The block yields the channel name and the string message payload
+require "../xephyr_runner"
 redis.subscribe(channel) do |on|
   on.message do |_channel, message|
     runner = XephyrRunner.new(message)
