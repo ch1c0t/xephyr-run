@@ -10,7 +10,7 @@ def run
 
   spawn do
     app_stderr_buffer = IO::Memory.new
-    
+
     begin
       xephyr_process = Process.new(
         command: "Xephyr", 
@@ -18,6 +18,11 @@ def run
       )
 
       sleep 100.milliseconds
+
+      wm_process = Process.new(
+        command: "matchbox-window-manager",
+        env: {"DISPLAY" => display_string}
+      )
 
       app_process = Process.new(
         command: path,
@@ -41,6 +46,7 @@ def run
         )
       end
 
+      wm_process.terminate if wm_process.exists?
       xephyr_process.terminate if xephyr_process.exists?
     rescue ex : Exception
       STDERR.puts "System execution failure inside target '#{@raw_payload}': #{ex.message}"
