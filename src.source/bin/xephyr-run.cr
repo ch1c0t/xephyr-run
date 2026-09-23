@@ -1,25 +1,32 @@
-require "redis"
-
-# 1. Check if a CLI argument was provided
 if ARGV.empty?
-  STDERR.puts "Error: Missing message argument."
-  STDERR.puts "Usage: crystal run publisher.cr -- \"Your message here\""
+  STDERR.puts "Pass a command as the first argument."
+  STDERR.puts "Usage: xephyr-run \"command_to_run_inside_xephyr\""
   exit 1
 end
 
-# 2. Get the first command-line argument
-message_to_send = ARGV[0]
+command_to_run = ARGV[0]
 
-# 3. Resolve the Unix socket path
-default_fallback = Path.home.join(".local/share/redis/socket").to_s
-socket_path = ENV.fetch("REDIS_UNIXSOCKET", default_fallback)
-p socket_path
+require "../global"
+channel = Global.amqp_channel
 
-# 4. Connect and publish
-redis = Redis.new(unixsocket: socket_path)
-channel = "Xephyr"
+pid = Process.pid
+out_queue_name = "#{pid}.xephyr_commands.out"
+response_queue = channel.queue(out_queue_name, auto_delete: true, exclusive: true)
 
-puts "Publishing to channel '#{channel}' via socket..."
-subscribers = redis.publish(channel, message_to_send)
+response_bridge = Channel(String).new
+response_queue.subscribe(no_ack: true) do |msg|
+  response_bridge.send(msg.body_io.to_s)
+end
 
-puts "Success! Message delivered to #{subscribers} subscriber(s)."
+channel.basic_publish(
+  command_to_run,
+  exchange: "",
+  routing_key: "xephyr_commands",
+  props: AMQP::Client::Properties.new(
+    reply_to: response_queue.name,
+  )
+)
+
+if display_name = response_bridge.receive
+  puts display_name
+end

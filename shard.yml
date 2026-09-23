@@ -10,5 +10,5 @@ targets:
     main: src/bin/xephyrd.cr
 crystal: ">= 1.15.1"
 dependencies:
-  redis:
-    github: stefanwille/crystal-redis
+  amqp-client:
+    github: cloudamqp/amqp-client.cr

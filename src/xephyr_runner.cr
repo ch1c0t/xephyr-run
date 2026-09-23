@@ -1,59 +1,89 @@
 class XephyrRunner
+  class BinaryNotFoundError < Exception
+    def initialize(app_executable : String)
+      super("Program '#{app_executable}' is not installed or not available in PATH.")
+    end
+  end
+
+  module Helpers
+    def response_queue : String
+      queue = @message.properties.reply_to
+      if queue.nil? || queue.empty?
+        raise MissingReplyToError.new
+      end
+      queue
+    end
+    
+    def resolved_path : String
+      found_path = Process.find_executable(@app_executable)
+      if found_path.nil?
+        raise BinaryNotFoundError.new(@app_executable)
+      end
+    
+      found_path
+    end
+    
+    private def send_reply(payload_text : String)
+      @channel.basic_publish(payload_text, exchange: "", routing_key: response_queue)
+    end
+  end
+
+  class MissingReplyToError < Exception
+  end
+
   module Run
     # Spawns Xephyr and the nested application inside a separate concurrent context
     def run
-      # Ensure verification passed before spinning up infrastructure
-      path = @resolved_path
-      return if path.nil?
-    
       display_id = @@display_counter.add(1)
       display_string = ":#{display_id}"
-      puts "\n[+] Validated: #{path} -> Spawning screen #{display_string} [Size: #{screen_resolution}]"
+      puts "\n[+] Validated: #{resolved_path} -> Spawning screen #{display_string} [Size: #{screen_resolution}]"
     
-      spawn do
+      spawn x11_stack(display_string)
+    end
+  end
+
+  module X11Stack
+    private def x11_stack(display : String)
+      begin
         app_stderr_buffer = IO::Memory.new
     
-        begin
-          xephyr_process = Process.new(
-            command: "Xephyr", 
-            args: [display_string, "-screen", screen_resolution, "-ac"]
-          )
+        xephyr = Process.new("Xephyr", [display, "-screen", screen_resolution, "-ac"])
+        sleep 50.milliseconds
+        wm = Process.new("matchbox-window-manager", ["-use_titlebar", "no"], env: {"DISPLAY" => display})
     
-          sleep 100.milliseconds
+        app = Process.new(
+          command: resolved_path,
+          args: @app_args,
+          env: {"DISPLAY" => display},
+          error: app_stderr_buffer
+        )
+        sleep 50.milliseconds
     
-          wm_process = Process.new(
-            command: "matchbox-window-manager",
-            args: ["-use_titlebar", "no"],
-            env: {"DISPLAY" => display_string}
-          )
+        if app.exists?
+          puts "[-]·Screen·#{display}·Operational.·Running·PID·#{app.pid}"
+          send_reply(display)
     
-          app_process = Process.new(
-            command: path,
-            args: @app_args,
-            env: {"DISPLAY" => display_string},
-            error: app_stderr_buffer
-          )
-    
-          puts "[-] Screen #{display_string} Operational. Running PID #{app_process.pid}"
-    
-          exit_status = app_process.wait
+          exit_status = app.wait
           if exit_status.success?
-            puts "[x] Program inside #{display_string} closed. Cleaning up Xephyr process..."
+            puts "[x] Program inside #{display} closed. Cleaning up Xephyr process..."
           else
             log_application_failure(
               @app_executable,
               @raw_payload,
-              display_string,
+              display,
               exit_status.exit_code,
               app_stderr_buffer.to_s
             )
           end
-    
-          wm_process.terminate if wm_process.exists?
-          xephyr_process.terminate if xephyr_process.exists?
-        rescue ex : Exception
-          STDERR.puts "System execution failure inside target '#{@raw_payload}': #{ex.message}"
+        else
+          send_reply("ERROR: Application crashed immediately on startup")
         end
+    
+        wm.terminate if wm.exists?
+        xephyr.terminate if xephyr.exists?
+      rescue ex : Exception
+        send_reply("ERROR: Server runtime failure")
+        STDERR.puts "System execution failure for #{display} inside target '#{@raw_payload}': #{ex.message}"
       end
     end
   end
@@ -61,25 +91,22 @@ class XephyrRunner
   # Track display indices across all instances concurrently using an atomic counter
   @@display_counter = Atomic(Int32).new(10)
   
-  def initialize(@raw_payload : String)
+  @channel : ::AMQP::Client::Channel
+  @raw_payload : String
+  @app_executable : String
+  @app_args : Array(String)
+  @resolved_path : String?
+  
+  def initialize(@message : AMQP::Client::DeliverMessage)
+    @channel = Global.amqp_channel
+    @raw_payload = @message.body_io.to_s
+  
     @parts = @raw_payload.strip.split(' ')
     @app_executable = @parts.shift? || ""
     @app_args = @parts
-    @resolved_path = nil : String?
   end
   
-  # Validates that the payload is well-formed and the executable exists
-  def valid? : Bool
-    return false if @app_executable.empty?
-    
-    @resolved_path = Process.find_executable(@app_executable)
-    if @resolved_path.nil?
-      STDERR.puts "\n[!] Rejected: Program '#{@app_executable}' is not installed or not in PATH."
-      return false
-    end
-    
-    true
-  end
-  
+  include Helpers
+  include X11Stack
   include Run
 end

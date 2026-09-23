@@ -66,26 +66,19 @@ def screen_resolution : String
   "1024x768"
 end
 
-require "redis"
+require "../global"
+ch = Global.amqp_channel
+worker_queue = ch.queue("xephyr_commands")
 
-default_fallback = Path.home.join(".local/share/redis/socket").to_s
-socket_path = ENV.fetch("REDIS_UNIXSOCKET", default_fallback)
+puts "LavinMQ Daemon running via Global.amqp_channel."
+puts "Awaiting jobs on queue 'xephyr_commands'..."
 
-puts "Connecting to Redis via Unix socket at: #{socket_path}"
-
-# 2. Initialize crystal-redis using the verified 'unixsocket' parameter
-redis = Redis.new(unixsocket: socket_path)
-
-channel = "Xephyr"
-puts "Listening for messages on channel '#{channel}'..."
-puts "Press Ctrl+C to exit."
-
-# 3. Block and listen for incoming messages on the channel
-# The block yields the channel name and the string message payload
 require "../xephyr_runner"
-redis.subscribe(channel) do |on|
-  on.message do |_channel, message|
-    runner = XephyrRunner.new(message)
-    runner.run if runner.valid?
-  end
+# Block the fiber loop to continuously parse events as they arrive
+worker_queue.subscribe(no_ack: true) do |msg|
+  runner = XephyrRunner.new(msg)
+  runner.run
 end
+
+# Keep the execution thread execution timeline context alive
+sleep

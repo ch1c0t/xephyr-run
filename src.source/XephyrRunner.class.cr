@@ -1,24 +1,21 @@
 # Track display indices across all instances concurrently using an atomic counter
 @@display_counter = Atomic(Int32).new(10)
 
-def initialize(@raw_payload : String)
+@channel : ::AMQP::Client::Channel
+@raw_payload : String
+@app_executable : String
+@app_args : Array(String)
+@resolved_path : String?
+
+def initialize(@message : AMQP::Client::DeliverMessage)
+  @channel = Global.amqp_channel
+  @raw_payload = @message.body_io.to_s
+
   @parts = @raw_payload.strip.split(' ')
   @app_executable = @parts.shift? || ""
   @app_args = @parts
-  @resolved_path = nil : String?
 end
 
-# Validates that the payload is well-formed and the executable exists
-def valid? : Bool
-  return false if @app_executable.empty?
-  
-  @resolved_path = Process.find_executable(@app_executable)
-  if @resolved_path.nil?
-    STDERR.puts "\n[!] Rejected: Program '#{@app_executable}' is not installed or not in PATH."
-    return false
-  end
-  
-  true
-end
-
+include Helpers
+include X11Stack
 include Run
