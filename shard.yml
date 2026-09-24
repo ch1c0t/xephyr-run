@@ -10,5 +10,5 @@ targets:
     main: src/bin/xephyrd.cr
 crystal: ">= 1.15.1"
 dependencies:
-  amqp-client:
-    github: cloudamqp/amqp-client.cr
+  global-amqp_channel:
+    github: ch1c0t/crystal.global-amqp_channel
