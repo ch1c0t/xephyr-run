@@ -1,17 +1,22 @@
 include JSON::Serializable
 
-# "SUCCESS" or "ERROR"
-property status : String
+# A response sent from xephyrd back to an xephyr client.
+struct Response
+  SUCCESS = "SUCCESS"
+  ERROR   = "ERROR"
 
-# Populated only on successful startup or termination queries
-property display : String?
+  property status : String
+  property display : String?
+  property error : String?
 
-# Populated only on failure triggers
-property error : String?
+  def initialize(
+    @status : String,
+    @display : String? = nil,
+    @error : String? = nil
+  )
+  end
 
-def initialize(@status : String, @display : String? = nil, @error : String? = nil)
-end
-
-def success? : Bool
-  status == "SUCCESS"
+  def success? : Bool
+    status == SUCCESS
+  end
 end
