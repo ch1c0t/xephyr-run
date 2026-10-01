@@ -77,6 +77,8 @@ class XephyrRunner
 
   module X11Stack
     private def x11_stack(display : String, command : String)
+      xephyr : Process? = nil
+      wm : Process? = nil
       app_stderr_buffer = IO::Memory.new
 
       begin
@@ -109,8 +111,6 @@ class XephyrRunner
               error: "Application failed to start"
             )
           )
-          wm.terminate if wm.exists?
-          xephyr.terminate if xephyr.exists?
           return
         end
 
@@ -140,13 +140,8 @@ class XephyrRunner
         )
         STDERR.puts "System execution failure for #{display}: #{ex.message}"
       ensure
-        if wm
-          wm.terminate if wm.exists?
-        end
-
-        if xephyr
-          xephyr.terminate if xephyr.exists?
-        end
+        wm.try &.terminate if wm && wm.not_nil!.exists?
+        xephyr.try &.terminate if xephyr && xephyr.not_nil!.exists?
       end
     end
 
