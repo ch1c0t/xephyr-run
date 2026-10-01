@@ -1,10 +1,8 @@
 module Xephyr
   struct Response
     include JSON::Serializable
-
     SUCCESS = "SUCCESS"
     ERROR = "ERROR"
-
     property status : String
     property display : String?
     property error : String?
