@@ -23,7 +23,7 @@ end
 
 command_to_run = ARGV[0]
 
-client   = Xephyr::Client.new(command_to_run)
+client   = Xephyr::Client.start(command_to_run)
 response = client.execute
 
 if response.success?
