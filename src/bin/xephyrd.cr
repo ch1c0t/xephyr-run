@@ -15,48 +15,49 @@ when 1
 end
 
 # Write failure logs to both the console and ~/.local/state/xephyrd/.
-def log_application_failure(received_command : String, display_string : String, exit_code : Int32, error_logs : String)
-  state_dir = Path.home.join(".local", "state", "xephyrd")
-  Dir.mkdir_p(state_dir)
+module Xephyr
+  def self.log_application_failure(received_command : String, display_string : String, exit_code : Int32, error_logs : String)
+    state_dir = Path.home.join(".local", "state", "xephyrd")
+    Dir.mkdir_p(state_dir)
 
-  timestamp = Time.local.to_s("%Y%m%d_%H%M%S")
-  safe_display = display_string.gsub(':', "")
-  log_filename = "#{timestamp}_#{safe_display}.log"
-  log_filepath = state_dir.join(log_filename)
+    timestamp = Time.local.to_s("%Y%m%d_%H%M%S")
+    safe_display = display_string.gsub(':', "")
+    log_filename = "#{timestamp}_#{safe_display}.log"
+    log_filepath = state_dir.join(log_filename)
 
-  report = String.build do |io|
-    io << "CRASH REPORT\n"
-    io << "Time:          #{Time.local}\n"
-    io << "Received command: #{received_command}\n"
-    io << "Display:       #{display_string}\n"
-    io << "Exit Code:     #{exit_code}\n"
-    io << "Captured Logs:\n"
-    io << (error_logs.empty? ? "[No stderr logs emitted]" : error_logs)
-  end
+    report = String.build do |io|
+      io << "CRASH REPORT\n"
+      io << "Time:          #{Time.local}\n"
+      io << "Received command: #{received_command}\n"
+      io << "Display:       #{display_string}\n"
+      io << "Exit Code:     #{exit_code}\n"
+      io << "Captured Logs:\n"
+      io << (error_logs.empty? ? "[No stderr logs emitted]" : error_logs)
+    end
 
-  File.write(log_filepath, report)
+    File.write(log_filepath, report)
 
-  STDERR.puts "\n[!] CRASH DETECTED on #{display_string} (Exit Code: #{exit_code})."
-  STDERR.puts "    Log saved to: #{log_filepath}"
+    STDERR.puts "\n[!] CRASH DETECTED on #{display_string} (Exit Code: #{exit_code})."
+    STDERR.puts "    Log saved to: #{log_filepath}"
 
-  unless error_logs.strip.empty?
-    STDERR.puts "    Captured Output Logs:\n--- Start App Logs ---\n#{error_logs.strip}\n--- End App Logs ---"
-  end
-end
-
-# Discover the current screen resolution via xrandr.
-def screen_resolution : String
-  stdout_buffer = IO::Memory.new
-  status = Process.run("xrandr", args: ["--current"], output: stdout_buffer)
-
-  if status.success?
-    output_string = stdout_buffer.to_s
-    if match = output_string.match(/\b(\d+)x(\d+)\b/)
-      return match[0]
+    unless error_logs.strip.empty?
+      STDERR.puts "    Captured Output Logs:\n--- Start App Logs ---\n#{error_logs.strip}\n--- End App Logs ---"
     end
   end
 
-  "1024x768"
+  def self.screen_resolution : String
+    stdout_buffer = IO::Memory.new
+    status = Process.run("xrandr", args: ["--current"], output: stdout_buffer)
+
+    if status.success?
+      output_string = stdout_buffer.to_s
+      if match = output_string.match(/\b(\d+)x(\d+)\b/)
+        return match[0]
+      end
+    end
+
+    "1024x768"
+  end
 end
 
 require "../global"
@@ -67,10 +68,10 @@ worker_queue = ch.queue("xephyr_commands")
 puts "LavinMQ Daemon running via Global.amqp_channel."
 puts "Awaiting jobs on queue 'xephyr_commands'..."
 
-require "../xephyr_runner"
+require "../xephyr"
 
 worker_queue.subscribe(no_ack: true) do |msg|
-  XephyrRunner.new(msg).run
+  Xephyr::Runner.new(msg).run
 end
 
 sleep

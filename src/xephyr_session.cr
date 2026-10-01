@@ -1,7 +1,0 @@
-require "./xephyr_session/core"
-require "./xephyr_session/start"
-require "./xephyr_session/wait"
-require "./xephyr_session/terminate"
-require "./xephyr_session/cleanup"
-require "./xephyr_session/x_server"
-require "./xephyr_session/process_start"
