@@ -77,7 +77,7 @@ module Xephyr
       )
 
       @channel.basic_publish(
-        payload: request.to_json,
+        request.to_json,
         exchange: "",
         routing_key: "xephyr_commands",
         props: AMQP::Client::Properties.new(reply_to: @queue_name)

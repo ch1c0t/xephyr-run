@@ -1,3 +1,5 @@
+require "./xephyr"
+
 class XephyrRunner
   class InvalidRequestError < Exception
   end
@@ -16,7 +18,7 @@ class XephyrRunner
 
     private def send_reply(response : Xephyr::Response)
       @channel.basic_publish(
-        payload: response.to_json,
+        response.to_json,
         exchange: "",
         routing_key: response_queue
       )
