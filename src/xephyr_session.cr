@@ -27,9 +27,11 @@ class XephyrSession
       env: {"DISPLAY" => @display}
     )
 
+    # Start the command in its own process group so KILL can terminate the
+    # command and any children it created.
     @app = Process.new(
-      "/bin/sh",
-      ["-c", @command],
+      "setsid",
+      ["/bin/sh", "-c", @command],
       env: {"DISPLAY" => @display},
       error: @app_stderr_buffer
     )
@@ -51,7 +53,7 @@ class XephyrSession
       log_application_failure(
         @command,
         @display,
-        exit_status.exit_code,
+        exit_status.exit_code?,
         @app_stderr_buffer.to_s
       )
     end
@@ -60,13 +62,28 @@ class XephyrSession
   end
 
   def terminate
-    @app.try &.terminate if @app && @app.not_nil!.exists?
-    @wm.try &.terminate if @wm && @wm.not_nil!.exists?
-    @xephyr.try &.terminate if @xephyr && @xephyr.not_nil!.exists?
+    terminate_application
+    terminate_process(@wm)
+    terminate_process(@xephyr)
+  end
+
+  private def terminate_application
+    return unless @app && @app.not_nil!.exists?
+
+    Process.signal(Signal::TERM, -@app.not_nil!.pid)
+  rescue ex : Exception
+    @app.not_nil!.terminate
+  end
+
+  private def terminate_process(process : Process?)
+    return unless process && process.not_nil!.exists?
+
+    process.not_nil!.terminate
   end
 
   private def cleanup
-    terminate
+    terminate_process(@wm)
+    terminate_process(@xephyr)
   end
 
   private def wait_for_x_server
