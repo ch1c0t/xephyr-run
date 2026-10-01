@@ -39,9 +39,9 @@ class XephyrSession
     unless @app.not_nil!.exists?
       raise "Application failed to start"
     end
-  rescue
+  rescue ex : Exception
     cleanup
-    raise
+    raise ex
   end
 
   def wait
