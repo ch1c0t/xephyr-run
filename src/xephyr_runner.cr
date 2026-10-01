@@ -1,4 +1,6 @@
 require "./xephyr"
+require "./xephyr_session"
 require "./xephyr_runner/base"
+require "./xephyr_runner/reply"
 require "./xephyr_runner/request"
 require "./xephyr_runner/session"
