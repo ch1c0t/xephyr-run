@@ -2,7 +2,7 @@ module Xephyr
   class Session
     def start
       @xephyr = Process.new(
-        "Xephyr", [@display, "-screen", screen_resolution, "-ac"]
+        "Xephyr", [@display, "-screen", Xephyr.screen_resolution, "-ac"]
       )
       wait_for_x_server
 
