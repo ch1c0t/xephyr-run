@@ -8,6 +8,8 @@ targets:
     main: src/bin/xephyr-run.cr
   xephyrd:
     main: src/bin/xephyrd.cr
+  xephyr-kill:
+    main: src/bin/xephyr-kill.cr
 crystal: ">= 1.15.1"
 dependencies:
   global-amqp_channel:
