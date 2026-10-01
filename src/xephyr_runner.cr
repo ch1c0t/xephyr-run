@@ -1,111 +1,186 @@
 class XephyrRunner
-  class BinaryNotFoundError < Exception
-    def initialize(app_executable : String)
-      super("Program '#{app_executable}' is not installed or not available in PATH.")
-    end
+  class InvalidRequestError < Exception
+  end
+
+  class MissingReplyToError < Exception
   end
 
   module Helpers
-    def response_queue : String
+    private def response_queue : String
       queue = @message.properties.reply_to
       if queue.nil? || queue.empty?
         raise MissingReplyToError.new
       end
       queue
     end
-    
-    def resolved_path : String
-      found_path = Process.find_executable(@app_executable)
-      if found_path.nil?
-        raise BinaryNotFoundError.new(@app_executable)
-      end
-    
-      found_path
-    end
-    
-    private def send_reply(payload_text : String)
-      @channel.basic_publish(payload_text, exchange: "", routing_key: response_queue)
-    end
-  end
 
-  class MissingReplyToError < Exception
+    private def send_reply(response : Xephyr::Response)
+      @channel.basic_publish(
+        payload: response.to_json,
+        exchange: "",
+        routing_key: response_queue
+      )
+    end
   end
 
   module Run
-    # Spawns Xephyr and the nested application inside a separate concurrent context
     def run
+      request = Xephyr::Request.from_json(@message.body_io.to_s)
+
+      unless request.valid?
+        send_reply(
+          Xephyr::Response.new(
+            status: Xephyr::Response::ERROR,
+            error: "Invalid xephyr request"
+          )
+        )
+        return
+      end
+
+      case request.action
+      when Xephyr::Request::START
+        start_session(request.command.not_nil!)
+      else
+        send_reply(
+          Xephyr::Response.new(
+            status: Xephyr::Response::ERROR,
+            error: "Unsupported action: #{request.action}"
+          )
+        )
+      end
+    rescue JSON::ParseException
+      send_reply(
+        Xephyr::Response.new(
+          status: Xephyr::Response::ERROR,
+          error: "Invalid JSON request"
+        )
+      )
+    rescue ex : MissingReplyToError
+      STDERR.puts "Cannot reply to xephyr request: #{ex.message}"
+    rescue ex : Exception
+      send_reply(
+        Xephyr::Response.new(
+          status: Xephyr::Response::ERROR,
+          error: ex.message || "Xephyr daemon failure"
+        )
+      )
+      STDERR.puts "Xephyr daemon failure: #{ex.message}"
+    end
+
+    private def start_session(command : String)
       display_id = @@display_counter.add(1)
-      display_string = ":#{display_id}"
-      puts "\n[+] Validated: #{resolved_path} -> Spawning screen #{display_string} [Size: #{screen_resolution}]"
-    
-      spawn x11_stack(display_string)
+      display = ":#{display_id}"
+
+      spawn x11_stack(display, command)
     end
   end
 
   module X11Stack
-    private def x11_stack(display : String)
+    private def x11_stack(display : String, command : String)
+      app_stderr_buffer = IO::Memory.new
+
       begin
-        app_stderr_buffer = IO::Memory.new
-    
-        xephyr = Process.new("Xephyr", [display, "-screen", screen_resolution, "-ac"])
-        sleep 50.milliseconds
-        wm = Process.new("matchbox-window-manager", ["-use_titlebar", "no"], env: {"DISPLAY" => display})
-    
+        xephyr = Process.new(
+          "Xephyr",
+          [display, "-screen", screen_resolution, "-ac"]
+        )
+
+        wait_for_x_server(display)
+
+        wm = Process.new(
+          "matchbox-window-manager",
+          ["-use_titlebar", "no"],
+          env: {"DISPLAY" => display}
+        )
+
         app = Process.new(
-          command: resolved_path,
-          args: @app_args,
+          "/bin/sh",
+          ["-c", command],
           env: {"DISPLAY" => display},
           error: app_stderr_buffer
         )
-        sleep 50.milliseconds
-    
-        if app.exists?
-          puts "[-]·Screen·#{display}·Operational.·Running·PID·#{app.pid}"
-          send_reply(display)
-    
-          exit_status = app.wait
-          if exit_status.success?
-            puts "[x] Program inside #{display} closed. Cleaning up Xephyr process..."
-          else
-            log_application_failure(
-              @app_executable,
-              @raw_payload,
-              display,
-              exit_status.exit_code,
-              app_stderr_buffer.to_s
+
+        wait_for_process_start(app)
+
+        unless app.exists?
+          send_reply(
+            Xephyr::Response.new(
+              status: Xephyr::Response::ERROR,
+              error: "Application failed to start"
             )
-          end
-        else
-          send_reply("ERROR: Application crashed immediately on startup")
+          )
+          wm.terminate if wm.exists?
+          xephyr.terminate if xephyr.exists?
+          return
         end
-    
-        wm.terminate if wm.exists?
-        xephyr.terminate if xephyr.exists?
+
+        send_reply(
+          Xephyr::Response.new(
+            status: Xephyr::Response::SUCCESS,
+            display: display
+          )
+        )
+
+        exit_status = app.wait
+
+        unless exit_status.success?
+          log_application_failure(
+            command,
+            display,
+            exit_status.exit_code,
+            app_stderr_buffer.to_s
+          )
+        end
       rescue ex : Exception
-        send_reply("ERROR: Server runtime failure")
-        STDERR.puts "System execution failure for #{display} inside target '#{@raw_payload}': #{ex.message}"
+        send_reply(
+          Xephyr::Response.new(
+            status: Xephyr::Response::ERROR,
+            error: ex.message || "Server runtime failure"
+          )
+        )
+        STDERR.puts "System execution failure for #{display}: #{ex.message}"
+      ensure
+        if wm
+          wm.terminate if wm.exists?
+        end
+
+        if xephyr
+          xephyr.terminate if xephyr.exists?
+        end
+      end
+    end
+
+    private def wait_for_x_server(display : String)
+      100.times do
+        return if Process.run(
+          "xdpyinfo",
+          args: ["-display", display],
+          output: Process::Redirect::Close,
+          error: Process::Redirect::Close
+        ).success?
+
+        sleep 50.milliseconds
+      end
+
+      raise "Xephyr did not become ready on #{display}"
+    end
+
+    private def wait_for_process_start(process : Process)
+      100.times do
+        return if process.exists?
+        sleep 10.milliseconds
       end
     end
   end
 
-  # Track display indices across all instances concurrently using an atomic counter
   @@display_counter = Atomic(Int32).new(10)
-  
+
   @channel : ::AMQP::Client::Channel
-  @raw_payload : String
-  @app_executable : String
-  @app_args : Array(String)
-  @resolved_path : String?
-  
+
   def initialize(@message : AMQP::Client::DeliverMessage)
     @channel = Global.amqp_channel
-    @raw_payload = @message.body_io.to_s
-  
-    @parts = @raw_payload.strip.split(' ')
-    @app_executable = @parts.shift? || ""
-    @app_args = @parts
   end
-  
+
   include Helpers
   include X11Stack
   include Run
