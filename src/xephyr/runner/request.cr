@@ -3,7 +3,6 @@ module Xephyr
     def run
       request = Xephyr::Request.from_json(@message.body_io.to_s)
       return invalid_request unless request.valid?
-
       case request.action
       when Xephyr::Request::START
         start_session(request.command.not_nil!)
@@ -28,7 +27,6 @@ module Xephyr
       ))
       STDERR.puts "Xephyr daemon failure: #{ex.message}"
     end
-
     private def invalid_request
       send_reply(Xephyr::Response.new(
         status: Xephyr::Response::ERROR, error: "Invalid xephyr request"
