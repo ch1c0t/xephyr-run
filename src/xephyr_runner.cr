@@ -1,4 +1,5 @@
 require "./xephyr"
+require "./xephyr_session"
 
 class XephyrRunner
   class InvalidRequestError < Exception
