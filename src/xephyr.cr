@@ -54,10 +54,28 @@ module Xephyr
   end
 
   class Client
-    def initialize(@command_string : String)
+    def initialize(@request : Xephyr::Request)
       @channel = Global.amqp_channel
       @response_bridge = Channel(String).new
       @queue_name = "#{Process.pid}.xephyr_commands.out"
+    end
+
+    def self.start(command : String)
+      new(
+        Xephyr::Request.new(
+          action: Xephyr::Request::START,
+          command: command
+        )
+      )
+    end
+
+    def self.kill(display : String)
+      new(
+        Xephyr::Request.new(
+          action: Xephyr::Request::KILL,
+          display: display
+        )
+      )
     end
 
     def execute : Xephyr::Response
@@ -71,13 +89,8 @@ module Xephyr
         @response_bridge.send(msg.body_io.to_s)
       end
 
-      request = Xephyr::Request.new(
-        action: Xephyr::Request::START,
-        command: @command_string
-      )
-
       @channel.basic_publish(
-        request.to_json,
+        @request.to_json,
         exchange: "",
         routing_key: "xephyr_commands",
         props: AMQP::Client::Properties.new(reply_to: @queue_name)
