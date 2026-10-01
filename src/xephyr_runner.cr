@@ -46,6 +46,8 @@ class XephyrRunner
       case request.action
       when Xephyr::Request::START
         start_session(request.command.not_nil!)
+      when Xephyr::Request::KILL
+        kill_session(request.display.not_nil!)
       else
         send_reply(
           Xephyr::Response.new(
@@ -71,6 +73,29 @@ class XephyrRunner
         )
       )
       STDERR.puts "Xephyr daemon failure: #{ex.message}"
+    end
+
+    private def kill_session(display : String)
+      session = @@sessions.delete(display)
+
+      unless session
+        send_reply(
+          Xephyr::Response.new(
+            status: Xephyr::Response::ERROR,
+            error: "No running Xephyr session for #{display}"
+          )
+        )
+        return
+      end
+
+      session.terminate
+
+      send_reply(
+        Xephyr::Response.new(
+          status: Xephyr::Response::SUCCESS,
+          display: display
+        )
+      )
     end
 
     private def start_session(command : String)
